@@ -4,6 +4,8 @@ import logging
 import sys
 import tokenize
 
+from .debug import trunc_repr
+
 try:
     from ast import unparse
 except ImportError:
@@ -394,6 +396,8 @@ class RewriteForNumba(ast.NodeTransformer):
                 # return original_node
 
         dim_slots = self.dim_slots
+        logger.info(f"VLC: _replacement: topname={trunc_repr(topname)}, attr={attr}, dim_slots={trunc_repr(dim_slots)} spacevars={trunc_repr(self.spacevars)}"
+                        f", transpose_lead={trunc_repr(transpose_lead)},  ")
         if isinstance(self.spacevars, dict):
             dim_slots = self.spacevars[attr]
 
@@ -413,6 +417,11 @@ class RewriteForNumba(ast.NodeTransformer):
                     if isinstance(n, int):
                         elts.append(ast.Name(id=f"_arg{n:02}", ctx=ast.Load()))
                     elif isinstance(n, dict):
+                        try:
+                            n_val = n[missing_dim_value]
+                        except KeyError:
+                            tmp = repr(n)
+                            print(f"missing dim failing, bubbling up\n {missing_dim_value}, '{tmp[:50]}...{tmp[-50:]}'")
                         if sys.version_info >= (3, 8):
                             elts.append(
                                 ast.Constant(n=n[missing_dim_value], ctx=ast.Load())

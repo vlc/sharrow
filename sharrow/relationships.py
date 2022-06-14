@@ -1033,6 +1033,7 @@ class DataTree:
 
         for e in obj._graph.edges:
             r = obj._get_relationship(e)
+            logger.info(f"processing relationship {r}, {r.parent_name}")
             if redigitize and r.analog:
                 p_dataset = obj._graph.nodes[r.parent_data].get("dataset", None)
                 if p_dataset is not None:
@@ -1042,7 +1043,7 @@ class DataTree:
             if r.indexing == "label":
                 p_dataset = obj._graph.nodes[r.parent_data].get("dataset", None)
                 c_dataset = obj._graph.nodes[r.child_data].get("dataset", None)
-
+                
                 upstream = p_dataset[r.parent_name]
                 downstream = c_dataset[r.child_name]
 
@@ -1146,7 +1147,8 @@ class DataTree:
                 n_missing_tokens += 1
 
         if n_missing_tokens > 1:
-            raise ValueError("at most one missing dimension is allowed")
+            raise ValueError("at most one missing dimension is allowed. VLC: probably a disconnected relationship " 
+                    "graph / unused variable")
         result = []
         for t in tokens:
             if isinstance(t, str):

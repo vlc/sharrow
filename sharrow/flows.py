@@ -21,6 +21,7 @@ from .aster import expression_for_numba, extract_all_name_tokens, extract_names_
 from .filewrite import blacken, rewrite
 from .relationships import DataTree
 from .table import Table
+from .debug import trunc_repr
 
 logger = logging.getLogger("sharrow")
 
@@ -553,15 +554,17 @@ class Flow:
         cache_dir=None,
         name=None,
         dtype="float32",
-        boundscheck=False,
+        boundscheck=True,
         nopython=True,
+        # nopython=False,
         fastmath=True,
         parallel=True,
         readme=None,
         flow_library=None,
         extra_hash_data=(),
         write_hash_audit=True,
-        hashing_level=1,
+        # hashing_level=1,
+        hashing_level=100,
         dim_order=None,
         dim_exclude=None,
     ):
@@ -803,8 +806,14 @@ class Flow:
         for n, (k, expr) in enumerate(defs.items()):
             expr = str(expr).lstrip()
             init_expr = expr
+            print("expr:", expr)
             for spacename, spacearrays in self.tree.subspaces.items():
+                print("\tspace", spacename)
                 dim_slots, digital_encodings = meta_data[spacename]
+                # dim_slots: Dict[data_cols_in_xr or digitisedOffset of a relation, astNode]
+                # if skim, somtimes is a Dict[str, Dict[label ->index]]
+                # display(dim_slots)
+                # display(digital_encodings)
                 try:
                     expr = expression_for_numba(
                         expr,
@@ -814,6 +823,17 @@ class Flow:
                         digital_encodings=digital_encodings,
                     )
                 except KeyError as key_err:
+                    # print(key_err, type(key_err), type(repr(key_err)))
+                    # print(vars(key_err))
+                    if str(key_err) == "None":
+                        # apparently keyerrors can't have newlines
+                        raise ValueError("VLCKeyError: expression_for_numba raised a null keyerror\n"
+                        f"args were \n\t'{expr=}'\n\t'{spacename=}','{trunc_repr(dim_slots)=}...', '{digital_encodings=}'"
+                        )
+                    print(key_err)
+                    # if key_err.args is None:
+                    #     print("Custom:args none", key_err)
+                    #     raise
                     if ".." in key_err.args[0]:
                         topkey, attrkey = key_err.args[0].split("..")
                     else:
@@ -1279,9 +1299,9 @@ class Flow:
     ):
         assert isinstance(rg, DataTree)
         with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore", category=nb.NumbaExperimentalFeatureWarning
-            )
+            # warnings.filterwarnings(
+            #     "ignore", category=nb.NumbaExperimentalFeatureWarning
+            # )
             try:
                 if runner is None:
                     if mnl is not None:
@@ -1320,10 +1340,16 @@ class Flow:
                     tree_root_dims[i]
                     for i in presorted(tree_root_dims, self.dim_order, self.dim_exclude)
                 ]
+                # for c in argument:
+                #     print(np.dtype(c))
+                # logger.info(f"VLC: rg={rg}, {argshape=}, {arguments}, {kwargs}")
                 return runner_(np.asarray(argshape), *arguments, **kwargs)
-            except nb.TypingError as err:
+            except nb.core.errors.TypingError as err:
                 _raw_functions = getattr(self, "_raw_functions", {})
                 logger.error(f"nb.TypingError in {len(_raw_functions)} functions")
+                for c in arguments:
+                    if c.dtype.kind in {'U', 'S'}:
+                        logging.error(f"VLC: string array  detected! {c}:shape={c.shape}")
                 for k, v in _raw_functions.items():
                     logger.error(f"{k} = {v[0]} = {v[1]}")
                 if "NameError:" in err.args[0]:
@@ -1408,6 +1434,7 @@ class Flow:
         if not source.relationships_are_digitized:
             source = source.digitize_relationships()
         if source.relationships_are_digitized:
+            # logger.info(f"VLC: {source=}, {runner=}, {dtype=}, {dot=}")
             if mnl_draws is None:
                 result = self.iload_raw(source, runner=runner, dtype=dtype, dot=dot)
             else:
